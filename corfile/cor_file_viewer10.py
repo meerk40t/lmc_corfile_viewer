@@ -32,6 +32,12 @@ parser.add_argument(
     help="Specify the computer-type for pcap analysis (intel, mac, m1). (default intel)",
     default="intel",
 )
+parser.add_argument(
+    "-l",
+    "--lens",
+    help="specify the lens-size in mm for the output. (default 150)",
+    default="150",
+)
 
 
 def parse_pcap_packet(packet):
@@ -112,7 +118,7 @@ def _read_correction_file(filename):
             header = f.read(2)
             print(f"Unknown Header remaining: {header.hex(sep=' ', bytes_per_sep=2)}")
             scale = struct.unpack("63d", f.read(0x1F8))[43]
-            print(f"Scale according to file : {scale}")
+            print(f"Scale according to file : {scale:.3f} - lens-size={65536.0 / scale:.1f}mm")
             for j in range(65):
                 for k in range(65):
                     dx = int(round(struct.unpack("d", f.read(8))[0]))
@@ -130,7 +136,7 @@ def _read_correction_file(filename):
             print(f"Unknown Header remaining: {header.hex(sep=' ', bytes_per_sep=2)}")
             scalebytes = f.read(8)
             scale = struct.unpack("d", scalebytes)[0]
-            print(f"Scale according to file : {scale}")
+            print(f"Scale according to file : {scale:.3f} - lens-size={65536.0 / scale:.1f}mm")
             # print (f"To float from {scalebytes.hex(sep=' ', bytes_per_sep=2)}: {struct.unpack('d', scalebytes)}, float={scale}")
             for j in range(65):
                 s = f"{j:2d}:"
@@ -150,10 +156,13 @@ def _read_correction_file(filename):
     return _fancy_table(x_list, y_list)
 
 
-def write_ideal_cor_file(filename, scale):
+def write_ideal_cor_file(filename, lens_size):
     ct = 0
     lines = []
     # Scale is arbitrary?!
+    scale = 65536 / lens_size
+    print(f"Scale: {scale:.3f} - lens-size={lens_size:.1f}mm")
+
     # scale = float(0x6666)
     for lidx in range(65):
         data = []
@@ -265,16 +274,25 @@ args = parser.parse_args(argv)
 
 
 def run():
-    count = len(args.input)
-    if not count:
-        print("No files were requested to be viewed.")
-        return
 
     if args.version:
         print("%s %s" % (APPLICATION_NAME, APPLICATION_VERSION))
         return
     if args.write:
-        write_ideal_cor_file("test.cor", 100.0)
+        lens_size = 150.0
+        if args.lens:
+            try:
+                ls = float(args.lens)
+                if ls > 0:
+                    lens_size = ls
+            except ValueError:
+                pass
+        
+        write_ideal_cor_file("test.cor", lens_size)
+        return
+    count = len(args.input)
+    if not count:
+        print("No files were requested to be viewed.")
         return
 
     # print(args.input)
