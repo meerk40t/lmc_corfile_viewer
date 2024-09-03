@@ -1,8 +1,11 @@
 """
-This tool was created by tatarize in 2023
+This tool was created by tatarize in 2023. 
+It reads in the correction file of a LMC based fibre laser and displays the displacement map
 """
+
 import argparse
 import math
+import os
 import struct
 import sys
 
@@ -12,13 +15,16 @@ import numpy
 APPLICATION_NAME = "Cor Tools"
 APPLICATION_VERSION = "0.0.7"
 
+COR_V1 = b"LMC1COR_1.0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+COR_V2 = b"JCZ_COR_2_1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-V", "--version", action="store_true", help="Display cor tools version"
 )
 parser.add_argument("input", nargs="*", type=str, help="input file")
 parser.add_argument("-v", "--vert", action="store_true")
-parser.add_argument("-d", "--dummy", action="store_true", help="write an empty corfile")
+parser.add_argument("-w", "--write", action="store_true", help="write an empty corfile")
 parser.add_argument(
     "-c",
     "--computer",
@@ -28,6 +34,7 @@ parser.add_argument(
 
 
 def parse_pcap_packet(packet):
+    """ parse pcap data (depending on the machine origin) """
     if args.computer == "intel":
         data = packet[27:]
         endpoint = packet[21] & 0x7F
@@ -90,28 +97,63 @@ def _read_correction_file(filename):
 
     with open(filename, "rb") as f:
         label = f.read(0x16)
-        print(f"{filename} .cor file creator listed as: {label}")
-        header = f.read(0xE)
-        print("Unknown Header remaining:")
-        print(header.hex(sep=" ", bytes_per_sep=2))
-        for j in range(65):
-            s = f"{j:2d}:"
-            for k in range(65):
-                dx = int.from_bytes(f.read(4), "little", signed=True)
-                # dx = dx if dx >= 0 else -dx + 0x8000
-                dy = int.from_bytes(f.read(4), "little", signed=True)
-                # dy = dy if dy >= 0 else -dy + 0x8000
-                x_list.append(-dx)
-                y_list.append(-dy)
-                s += f" ({dx:.0f},{dy:.0f})"
-            # print (s)
-
+        print(f"{filename} .cor file creator listed as: {label} ({len(label)} bytes)")
+        if label[:12] == COR_V1[:12]:
+            version = 1
+        elif label[:12] == COR_V2[:12]:
+            version = 2
+        else:
+            print("Unsupported format")
+            return None, None, None
+        ct = 0
+        if version == 1:
+            print (f"Version 1")
+            header = f.read(2)
+            print(f"Unknown Header remaining: {header.hex(sep=' ', bytes_per_sep=2)}")
+            scale = struct.unpack("63d", f.read(0x1F8))[43]
+            print(f"Scale according to file : {scale}")
+            for j in range(65):
+                for k in range(65):
+                    dx = int(round(struct.unpack("d", f.read(8))[0]))
+                    dx = dx if dx >= 0 else -dx + 0x8000
+                    dy = int(round(struct.unpack("d", f.read(8))[0]))
+                    dy = dy if dy >= 0 else -dy + 0x8000
+                    dx = dx & 0xFFFF
+                    dy = dy & 0xFFFF
+                    x_list.append(dx)
+                    y_list.append(dy)
+                    ct += 2
+        if version == 2:
+            print (f"Version 2")
+            header = f.read(6)
+            print(f"Unknown Header remaining: {header.hex(sep=' ', bytes_per_sep=2)}")
+            scalebytes = f.read(8)
+            scale = struct.unpack("d", scalebytes)[0]
+            print(f"Scale according to file : {scale}")
+            # print (f"To float from {scalebytes.hex(sep=' ', bytes_per_sep=2)}: {struct.unpack('d', scalebytes)}, float={scale}")
+            for j in range(65):
+                s = f"{j:2d}:"
+                for k in range(65):
+                    dx = int.from_bytes(f.read(4), "little", signed=True)
+                    # dx = dx if dx >= 0 else -dx + 0x8000
+                    dy = int.from_bytes(f.read(4), "little", signed=True)
+                    # dy = dy if dy >= 0 else -dy + 0x8000
+                    x_list.append(-dx)
+                    y_list.append(-dy)
+                    ct += 2
+                    # s += f" ({dx:.0f},{dy:.0f})"
+                # print (s)
+        # remaining = f.read(256)
+        print(f"Entries read            : {ct}")
 
     return _fancy_table(x_list, y_list)
 
 
-def write_ideal_cor_file(filename):
+def write_ideal_cor_file(filename, scale):
+    ct = 0
     lines = []
+    # Scale is arbitrary?!
+    # scale = float(0x6666)
     for lidx in range(65):
         data = []
         for cidx in range(65):
@@ -121,14 +163,23 @@ def write_ideal_cor_file(filename):
         lines.append(data)
     # So let's write a testfile...
     with open(filename, "wb") as f:
-        label = b'JCZ_COR_2_1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        f.write(label)
-        header = [0]*0xE
-        f.write(bytearray(header))
+        r = f.write(COR_V2)
+        # print(f"Label written: {r} bytes")
+        header = [0] * 6
+        r = f.write(bytearray(header))
+        # print(f"Header written: {r} bytes")
+        r = f.write(struct.pack("d", scale))
+
+        # print(f"Scale written: {r} bytes")
         for data in lines:
             for dx, dy in data:
                 f.write(int(dx).to_bytes(4, "little", signed=True))
                 f.write(int(dy).to_bytes(4, "little", signed=True))
+                ct += 2
+        r = f.write(bytearray([0]*4))
+        # print (f"Trailer written: {r} bytes")
+    print(f"Corfile written: {filename}, entries={ct}, scale={scale:.3f}")
+
 
 def _fancy_table(x_list, y_list):
     """
@@ -162,8 +213,11 @@ def _fancy_table(x_list, y_list):
     def normalize_distance(x, y):
         return (abs(complex(x, y)) - min_distance) * dist_scale
 
-    print(
-        f"min-x,y: {min_x} {min_y}. max x,y: {max_x} {max_y}. range-xy={range_x},{range_y} sxy: {x_scale:03f},{y_scale:03f}"
+    print (
+        f"min-x,y                 : {min_x}, {min_y}\n" + 
+        f"max x,y                 : {max_x}, {max_y}\n" +
+        f"range-xy                : {range_x}, {range_y}\n" +
+        f"scale-xy                : {x_scale:03f}, {y_scale:03f}"
     )
     # ax = []
     # ay = []
@@ -172,7 +226,7 @@ def _fancy_table(x_list, y_list):
     # print(
     #     f"absolute-end-positions: min-ax,ay values: {min(ax)} {min(ay)}. max ax,ay values: {max(ax)} {max(ay)}"
     # )
-    print("")
+    print ("")
 
     from matplotlib import colors
 
@@ -187,7 +241,7 @@ def _fancy_table(x_list, y_list):
         for i in range(len(y_list))
     ]
     for c in colors:
-        r,g,b = c
+        r, g, b = c
         c[0] = abs(r)
         if c[0] > 1.0:
             c[0] = 1.0
@@ -213,11 +267,11 @@ def run():
     if args.version:
         print("%s %s" % (APPLICATION_NAME, APPLICATION_VERSION))
         return
-    if args.dummy:
-        write_ideal_cor_file("test.cor")
+    if args.write:
+        write_ideal_cor_file("test.cor", 100.0)
         return
 
-    print(args.input)
+    # print(args.input)
     count = len(args.input)
     if not count:
         print("No files were requested to be viewed.")
@@ -227,11 +281,16 @@ def run():
     else:
         fig, ax = plt.subplots(1, count)
     for i, filename in enumerate(args.input):
+        if not os.path.exists(filename):
+            print(f"File {filename} does not exist.")
+            continue
         if filename.endswith(".pcap"):
             u, v, c = _read_table_from_pcap(filename)
         else:
             u, v, c = _read_correction_file(filename)
-
+        if u is None:
+            # Unknown format
+            continue
         x, y = numpy.mgrid[0:65, 0:65]
         if count > 1:
             ax[i].quiver(x, y, u, v, color=c)
