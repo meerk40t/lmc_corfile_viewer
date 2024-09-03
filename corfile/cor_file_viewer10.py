@@ -22,13 +22,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "-V", "--version", action="store_true", help="Display cor tools version"
 )
-parser.add_argument("input", nargs="*", type=str, help="input file")
-parser.add_argument("-v", "--vert", action="store_true")
+parser.add_argument("input", nargs="*", type=str, help="input file(s), either a valid .cor-file or a pcap recording")
+parser.add_argument("-v", "--vert", action="store_true", help="rotate display by 90°")
 parser.add_argument("-w", "--write", action="store_true", help="write an empty corfile")
+# parser.add_argument("-w", "--write", action="store_true", help="write an empty corfile")
 parser.add_argument(
     "-c",
     "--computer",
-    help="Specify the computer-type (intel, mac, m1). (default intel)",
+    help="Specify the computer-type for pcap analysis (intel, mac, m1). (default intel)",
     default="intel",
 )
 
@@ -264,6 +265,11 @@ args = parser.parse_args(argv)
 
 
 def run():
+    count = len(args.input)
+    if not count:
+        print("No files were requested to be viewed.")
+        return
+
     if args.version:
         print("%s %s" % (APPLICATION_NAME, APPLICATION_VERSION))
         return
@@ -272,10 +278,6 @@ def run():
         return
 
     # print(args.input)
-    count = len(args.input)
-    if not count:
-        print("No files were requested to be viewed.")
-        return
     if args.vert:
         fig, ax = plt.subplots(count, 1)
     else:
