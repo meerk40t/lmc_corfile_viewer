@@ -13,4 +13,10 @@ options:
   -c COMPUTER, --computer COMPUTER
                         Specify the computer-type for pcap analysis (intel, mac, m1). (default intel)
 ```
+
+Example:
+```
+python .\corfile\cor_file_viewer10.py .\testdata\fiber.cor
+```
+
 ![screenshot](https://github.com/user-attachments/assets/0f32a24a-f090-4f01-9d8a-5c16e0912acf)
