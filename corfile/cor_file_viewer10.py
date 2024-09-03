@@ -18,6 +18,7 @@ parser.add_argument(
 )
 parser.add_argument("input", nargs="*", type=str, help="input file")
 parser.add_argument("-v", "--vert", action="store_true")
+parser.add_argument("-d", "--dummy", action="store_true", help="write an empty corfile")
 parser.add_argument(
     "-c",
     "--computer",
@@ -94,6 +95,7 @@ def _read_correction_file(filename):
         print("Unknown Header remaining:")
         print(header.hex(sep=" ", bytes_per_sep=2))
         for j in range(65):
+            s = f"{j:2d}:"
             for k in range(65):
                 dx = int.from_bytes(f.read(4), "little", signed=True)
                 # dx = dx if dx >= 0 else -dx + 0x8000
@@ -101,9 +103,32 @@ def _read_correction_file(filename):
                 # dy = dy if dy >= 0 else -dy + 0x8000
                 x_list.append(-dx)
                 y_list.append(-dy)
+                s += f" ({dx:.0f},{dy:.0f})"
+            # print (s)
+
 
     return _fancy_table(x_list, y_list)
 
+
+def write_ideal_cor_file(filename):
+    lines = []
+    for lidx in range(65):
+        data = []
+        for cidx in range(65):
+            dx = 0
+            dy = 0
+            data.append((dx, dy))
+        lines.append(data)
+    # So let's write a testfile...
+    with open(filename, "wb") as f:
+        label = b'JCZ_COR_2_1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        f.write(label)
+        header = [0]*0xE
+        f.write(bytearray(header))
+        for data in lines:
+            for dx, dy in data:
+                f.write(int(dx).to_bytes(4, "little", signed=True))
+                f.write(int(dy).to_bytes(4, "little", signed=True))
 
 def _fancy_table(x_list, y_list):
     """
@@ -187,6 +212,9 @@ args = parser.parse_args(argv)
 def run():
     if args.version:
         print("%s %s" % (APPLICATION_NAME, APPLICATION_VERSION))
+        return
+    if args.dummy:
+        write_ideal_cor_file("test.cor")
         return
 
     print(args.input)
