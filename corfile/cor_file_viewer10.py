@@ -130,6 +130,9 @@ def _read_correction_file(filename):
                     x_list.append(dx)
                     y_list.append(dy)
                     ct += 2
+            image_index = int.from_bytes(f.read(4), "little", signed=True)
+            print(f"Image-Index             : {image_index}")
+            print(f"Entries read            : {ct}")
         if version == 2:
             print (f"Version 2")
             header = f.read(6)
@@ -150,8 +153,9 @@ def _read_correction_file(filename):
                     ct += 2
                     # s += f" ({dx:.0f},{dy:.0f})"
                 # print (s)
-        # remaining = f.read(256)
-        print(f"Entries read            : {ct}")
+            image_index = int.from_bytes(f.read(4), "little", signed=True)
+            print(f"Image-Index             : {image_index}")
+            print(f"Entries read            : {ct}")
 
     return _fancy_table(x_list, y_list)
 
@@ -160,6 +164,7 @@ def write_ideal_cor_file(filename, lens_size):
     ct = 0
     lines = []
     # Scale is arbitrary?!
+    image_index = 0
     scale = 65536 / lens_size
     print(f"Scale: {scale:.3f} - lens-size={lens_size:.1f}mm")
 
@@ -186,7 +191,7 @@ def write_ideal_cor_file(filename, lens_size):
                 f.write(int(dx).to_bytes(4, "little", signed=True))
                 f.write(int(dy).to_bytes(4, "little", signed=True))
                 ct += 2
-        r = f.write(bytearray([0]*4))
+        r = f.write(int(image_index).to_bytes(4, "little", signed=True))
         # print (f"Trailer written: {r} bytes")
     print(f"Corfile written: {filename}, entries={ct}, scale={scale:.3f}")
 
